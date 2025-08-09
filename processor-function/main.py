@@ -14,7 +14,7 @@ PROJECT_ID = os.getenv("PROJECT_ID")
 LOCATION = os.getenv("LOCATION")
 PROCESSOR_ID = os.getenv("PROCESSOR_ID")
 
-# --- CLIENTS (Initialized globally for reuse) ---
+# --- Clients are initialized globally for reuse ---
 docai_client = documentai.DocumentProcessorServiceClient()
 bq_client = bigquery.Client()
 publisher = pubsub_v1.PublisherClient()
@@ -57,3 +57,33 @@ def process_invoice(event, context):
         for entity in document.entities
     }
     print(f"Successfully extracted data: {extracted_data}")
+
+    
+
+    # Prepare a clean row for BigQuery, defaulting missing fields to None
+    # This prevents schema mismatch errors if the AI doesn't find a specific field.
+    expected_keys = [
+        'vendor_name', 'invoice_date', 'due_date', 
+        'total_amount', 'tax_amount'
+    ]
+    row_to_insert = {key: extracted_data.get(key) for key in expected_keys}
+
+    # Add additional metadata to the row
+    row_to_insert.update({
+        'invoice_id': context.event_id,
+        'source_gcs_path': gcs_uri,
+        'user_id': user_id,
+        'processed_timestamp': context.timestamp,
+        'status': 'Pending_Approval'
+    })
+
+    # Insert the row into the BigQuery table
+    table_id = f"{PROJECT_ID}.invoice_processing.processed_invoices"
+    try:
+        errors = bq_client.insert_rows_json(table_id, [row_to_insert])
+        if not errors:
+            print("Successfully inserted row into BigQuery.")
+        else:
+            print(f"BigQuery insertion errors: {errors}")
+    except Exception as e:
+        print(f"Error inserting into BigQuery: {e}")
