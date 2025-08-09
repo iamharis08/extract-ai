@@ -1,5 +1,27 @@
+import os
 import base64
 import json
+from dotenv import load_dotenv
+from google.cloud import documentai_v1 as documentai
+from google.cloud import bigquery
+from google.cloud import pubsub_v1
+
+# This line loads the variables from your .env file into the environment
+load_dotenv()
+
+# --- CONFIGURATION ---
+# We read from the environment instead of hardcoding
+PROJECT_ID = os.getenv("PROJECT_ID") 
+LOCATION = os.getenv("LOCATION")  # This must match the region of your processor
+PROCESSOR_ID = os.getenv("PROCESSOR_ID") # Your Processor ID
+
+# Initialize the clients for the services we'll use.
+# We do this once, outside the function, for efficiency.
+docai_client = documentai.DocumentProcessorServiceClient()
+bq_client = bigquery.Client()
+publisher = pubsub_v1.PublisherClient()
+# --- END CONFIGURATION ---
+
 
 def process_invoice(event, context):
     """
@@ -14,10 +36,6 @@ def process_invoice(event, context):
     # The decoded string is itself a JSON object with file details.
     file_data = json.loads(pubsub_message_data)
     
-    print(f"Processing file: {file_data['name']}")
-
-    # Add this code inside your function, after the print statement
-
     # Get the full path of the file from the message data.
     full_path = file_data['name']
     bucket_name = file_data['bucket']
@@ -37,3 +55,44 @@ def process_invoice(event, context):
     user_id, filename = parts
 
     print(f"Received file '{filename}' from user '{user_id}' in bucket '{bucket_name}'.")
+
+    # --- Call Document AI Processor ---
+    
+    # Create the full GCS path to the invoice
+    gcs_uri = f"gs://{bucket_name}/{full_path}"
+    
+    # Define the file type
+    mime_type = "application/pdf"
+    
+    # Construct the full resource name of the processor
+    processor_name = docai_client.processor_path(PROJECT_ID, LOCATION, PROCESSOR_ID)
+    
+    # Create the document object for the API request
+    raw_document = documentai.RawDocument(
+        gcs_uri=gcs_uri,
+        mime_type=mime_type,
+    )
+    
+    # Make the actual API call to Document AI
+    print("Making request to Document AI processor...")
+    request = documentai.ProcessRequest(
+        name=processor_name,
+        raw_document=raw_document
+    )
+    
+    result = docai_client.process_document(request=request)
+    document = result.document
+    
+    print(f"Document processing complete. Found {len(document.entities)} entities.")
+    # --- End Call to Document AI ---
+
+    # --- Parse the Document AI Response ---
+    extracted_data = {}
+    for entity in document.entities:
+        key = entity.type_ # Keep original key, e.g., 'vendor_name'
+        value = entity.mention_text.replace('\n', '')
+        extracted_data[key] = value
+
+    print("Successfully extracted data:")
+    print(extracted_data)
+    # --- End Parsing ---

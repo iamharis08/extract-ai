@@ -1,0 +1,10 @@
+# For interacting with Google Cloud APIs
+google-cloud-documentai
+google-cloud-bigquery
+google-cloud-pubsub
+
+# Required by the Cloud Functions runtime environment
+functions-framework
+
+# For loading local environment variables from .env file
+python-dotenv
