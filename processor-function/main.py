@@ -79,6 +79,7 @@ def process_invoice(event, context):
 
     # Insert the row into the BigQuery table
     table_id = f"{PROJECT_ID}.invoice_processing.processed_invoices"
+    
     try:
         errors = bq_client.insert_rows_json(table_id, [row_to_insert])
         if not errors:
