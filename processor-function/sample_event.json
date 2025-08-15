@@ -5,6 +5,6 @@
       "eventType": "google.pubsub.topic.publish"
     },
     "data": {
-      "data": "eyJidWNrZXQiOiAiZXh0cmFjdGFpLTQ2ODMwNS1idWNrZXQiLCAibmFtZSI6ICJ0ZXN0LXVzZXItaWQvc2FtcGxlLWludm9pY2UucGRmIn0="
+      "data": "eyJidWNrZXQiOiAiZXh0cmFjdGFpLTQ2ODMwNS1yYXciLCAibmFtZSI6ICJ0ZXN0LXVzZXItaWQvc2FtcGxlLWludm9pY2UucGRmIn0="
     }
   }
