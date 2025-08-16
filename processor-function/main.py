@@ -62,6 +62,24 @@ def robust_date_parser(date_string):
 
 
 
+def clean_numeric_fields(item_dict, keys_to_clean):
+    """
+    A helper function that takes a dictionary and a set of keys,
+    and safely converts the values for those keys to floats.
+    """
+    # We loop through a copy of the items to safely modify the dictionary.
+    for key, value in list(item_dict.items()):
+        # We only operate on the keys specified in our set.
+        if key in keys_to_clean:
+            # We use the same robust try/except block as before.
+            try:
+                # Remove commas from numbers like "1,187.79" before converting.
+                item_dict[key] = float(str(value).replace(',', '')) if value else None
+            except (ValueError, TypeError):
+                # If conversion fails for any reason, set the value to None.
+                item_dict[key] = None
+    return item_dict
+
 
 
 def process_invoice(event, context):
@@ -70,8 +88,8 @@ def process_invoice(event, context):
     It processes the document using Document AI and stores the result in BigQuery.
     """
 
-    # This section is for the pub/sub and exctracting data from it ---------------------/
-    # Decode the Pub/Sub message to get file details
+    # 1. Decode the Pub/Sub message to get file details ---------------------/
+    
     pubsub_message_data = base64.b64decode(event['data']).decode('utf-8')
     file_data = json.loads(pubsub_message_data)
     
@@ -87,8 +105,9 @@ def process_invoice(event, context):
     user_id, filename = parts
     print(f"Processing '{filename}' for user '{user_id}'.")
    #----------------------------------------------------------------------------
-    #Function
-    #grabs the google cloud storage url path for uploaded invoice
+
+    # 2. Function grabs the google cloud storage url path for uploaded invoice
+
     gcs_uri = f"gs://{bucket_name}/{full_gcs_path}"
     base_processor_name = docai_client.processor_path(PROJECT_ID, LOCATION, PROCESSOR_ID)
     processor_name = f"{base_processor_name}/processorVersions/stable"
@@ -106,22 +125,27 @@ def process_invoice(event, context):
     result = docai_client.process_document(request=request)
     document = result.document
 
-    #--------------------------------------------------------------------------
-    # --- Final, Corrected, Defensive Parsing and Transformation ---
+    #----------------------------------------------------------------------------------------------
+    #SECTION TRANSFORM, PARSE, AND CLEAN DATA
+    # Transform, parse, and clean data returned from Invoice Parser AI for BIGQUERY insert
 
-    # 1. First, parse ALL entities the AI gives us into a raw dictionary.
-    #    This is based on your correct finding that everything is in document.entities.
     raw_flat_data = {}
     parsed_line_items = []
     parsed_vat = []
 
-    # Check if the entity is a structured line_item
-    # Loop through the nested properties (quantity, description, etc.)
-    # EXAMPLE PROP
+    
+    # EXAMPLE PROP ---------------------
     #{
     # type_: "line_item/quantity",
-    # mention_text: "7"
+    # mention_text: "7",
+    # confidence_level: 0.99,
+    # properties: [......]
     # }
+    # ----------------------------------
+    
+    # Loop through the nested properties (quantity, description, etc.) and make it into a list of items
+    #formatting list_items and vat for BigQuery
+
     for entity in document.entities:
         key = entity.type_
 
@@ -137,12 +161,15 @@ def process_invoice(event, context):
             elif key == 'vat':
                 parsed_vat.append(nested_dict)
             
-        # Otherwise, it's a simple, flat entity
         else:
             raw_flat_data[key] = entity.mention_text.replace('\n', ' ')
 
     row_to_insert['line_items'] = parsed_line_items
     row_to_insert['vat'] = parsed_vat
+
+    # --------------------------------------------------------------------
+    # The AI sometimes finds more fields than we need and so we specify all the 
+    # columns we need to set for BigQuery so that no field is added thats not in BigQuery
 
     BQ_FLAT_COLUMNS = {
         'supplier_name', 'supplier_address', 'supplier_email', 'supplier_phone', 
@@ -162,16 +189,32 @@ def process_invoice(event, context):
         for entity in document.entities
         if entity.type_ in BQ_FLAT_COLUMNS
     }
+    # -------------------------------------------------------------------
 
-
-    # 3. Clean and format the date fields in our raw data.
+    # Clean and format date fields for BigQuery compatibility
     date_keys = ['invoice_date', 'due_date', 'delivery_date']
-
     for key in date_keys:
         if date_string := row_to_insert.get(key):
             row_to_insert[key] = robust_date_parser(date_string)
 
+    # ------------------------------------------------------------------
+
+    #cleaning data from list_items and vat properties for BigQuery Format
+    line_item_numeric_keys = {'quantity', 'unit_price', 'amount'}
+    vat_numeric_keys = {'tax_rate', 'tax_amount', 'amount', 'total_amount'}
+
+  
+    row_to_insert['line_items'] = [
+        clean_numeric_fields(item, line_item_numeric_keys) 
+        for item in row_to_insert.get('line_items', [])
+    ]
     
+    row_to_insert['vat'] = [
+        clean_numeric_fields(item, vat_numeric_keys) 
+        for item in row_to_insert.get('vat', [])
+    ]
+
+    # ---------------------------------------------------------------------------------------
     # 4. Add the final metadata fields that don't come from the AI.
     row_to_insert.update({
         'event_id': context.event_id,
@@ -182,8 +225,9 @@ def process_invoice(event, context):
     })
     
     print(f"Final prepared data for BigQuery: {row_to_insert}")
-    # --- End Transformation ---
 
+    # --- End Transform, Parse, and Clean --------------------------------------
+    
     # Insert the row into the BigQuery table
     table_id = f"{PROJECT_ID}.invoice_processing.processed_invoices"
 
