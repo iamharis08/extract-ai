@@ -129,7 +129,30 @@ def process_invoice(event, context):
     #SECTION TRANSFORM, PARSE, AND CLEAN DATA
     # Transform, parse, and clean data returned from Invoice Parser AI for BIGQUERY insert
 
-    raw_flat_data = {}
+        # The AI sometimes finds more fields than we need and so we specify all the 
+    # columns we need to set for BigQuery so that no field is added thats not in BigQuery
+
+    BQ_FLAT_COLUMNS = {
+        'supplier_name', 'supplier_address', 'supplier_email', 'supplier_phone', 
+        'supplier_website', 'supplier_tax_id', 'supplier_iban', 
+        'supplier_payment_ref', 'supplier_registration', 'receiver_name', 
+        'receiver_address', 'receiver_email', 'receiver_phone', 'receiver_website', 
+        'receiver_tax_id', 'invoice_id', 'invoice_date', 'due_date', 
+        'delivery_date', 'currency', 'currency_exchange_rate', 'net_amount', 
+        'total_tax_amount', 'freight_amount', 'amount_paid_since_last_invoice', 
+        'total_amount', 'purchase_order', 'payment_terms', 'carrier', 
+        'ship_to_name', 'ship_to_address', 'ship_from_name', 
+        'ship_from_address', 'remit_to_name', 'remit_to_address'
+    }
+
+    row_to_insert = {
+        entity.type_: entity.mention_text.replace('\n', ' ')
+        for entity in document.entities
+        if entity.type_ in BQ_FLAT_COLUMNS
+    }
+    # -------------------------------------------------------------------
+
+    
     parsed_line_items = []
     parsed_vat = []
 
@@ -162,34 +185,13 @@ def process_invoice(event, context):
                 parsed_vat.append(nested_dict)
             
         else:
-            raw_flat_data[key] = entity.mention_text.replace('\n', ' ')
+            row_to_insert[key] = entity.mention_text.replace('\n', ' ')
 
     row_to_insert['line_items'] = parsed_line_items
     row_to_insert['vat'] = parsed_vat
 
     # --------------------------------------------------------------------
-    # The AI sometimes finds more fields than we need and so we specify all the 
-    # columns we need to set for BigQuery so that no field is added thats not in BigQuery
 
-    BQ_FLAT_COLUMNS = {
-        'supplier_name', 'supplier_address', 'supplier_email', 'supplier_phone', 
-        'supplier_website', 'supplier_tax_id', 'supplier_iban', 
-        'supplier_payment_ref', 'supplier_registration', 'receiver_name', 
-        'receiver_address', 'receiver_email', 'receiver_phone', 'receiver_website', 
-        'receiver_tax_id', 'invoice_id', 'invoice_date', 'due_date', 
-        'delivery_date', 'currency', 'currency_exchange_rate', 'net_amount', 
-        'total_tax_amount', 'freight_amount', 'amount_paid_since_last_invoice', 
-        'total_amount', 'purchase_order', 'payment_terms', 'carrier', 
-        'ship_to_name', 'ship_to_address', 'ship_from_name', 
-        'ship_from_address', 'remit_to_name', 'remit_to_address'
-    }
-
-    row_to_insert = {
-        entity.type_: entity.mention_text.replace('\n', ' ')
-        for entity in document.entities
-        if entity.type_ in BQ_FLAT_COLUMNS
-    }
-    # -------------------------------------------------------------------
 
     # Clean and format date fields for BigQuery compatibility
     date_keys = ['invoice_date', 'due_date', 'delivery_date']
@@ -227,7 +229,7 @@ def process_invoice(event, context):
     print(f"Final prepared data for BigQuery: {row_to_insert}")
 
     # --- End Transform, Parse, and Clean --------------------------------------
-    
+
     # Insert the row into the BigQuery table
     table_id = f"{PROJECT_ID}.invoice_processing.processed_invoices"
 
