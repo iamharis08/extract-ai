@@ -34,10 +34,13 @@ def robust_date_parser(date_string):
     #we list the common date formats we expect to see in the invoices
     COMMON_DATE_FORMATS = [
         '%B %d, %Y',  # January 31, 2016
+        '%d %B, %Y',  # 31 January, 2016
         '%m/%d/%Y',  # 01/31/2016
         '%m-%d-%Y',  # 01-31-2016
+        '%Y/%m/%d',  # 2016/01/31
         '%Y-%m-%d',  # 2016-01-31
-        '%d-%m-%Y',  # 14/08/2023 
+        '%d/%m/%Y',  # 14/08/2023 
+        '%d-%m-%Y',  # 14-08-2023 
     ]
 
     # We loop through each format in our list.
@@ -87,8 +90,9 @@ def process_invoice(event, context):
     #Function
     #grabs the google cloud storage url path for uploaded invoice
     gcs_uri = f"gs://{bucket_name}/{full_gcs_path}"
-    processor_name = docai_client.processor_path(PROJECT_ID, LOCATION, PROCESSOR_ID)
-    
+    base_processor_name = docai_client.processor_path(PROJECT_ID, LOCATION, PROCESSOR_ID)
+    processor_name = f"{base_processor_name}/processorVersions/stable"
+
      # then calls the Document AI API to process the invoice
     gcs_document = documentai.GcsDocument(
         gcs_uri=gcs_uri, 
@@ -103,32 +107,56 @@ def process_invoice(event, context):
     document = result.document
 
     #--------------------------------------------------------------------------
-    # --- Parse, Transform, and Finalize Data for BigQuery ---
-    
-   # Parse flat entities directly into a dictionary
-    row_to_insert = {
+    # --- Final, Corrected, Defensive Parsing and Transformation ---
+
+    # 1. First, parse ALL entities the AI gives us into a raw dictionary.
+    #    This is based on your correct finding that everything is in document.entities.
+    raw_ai_data = {
         entity.type_: entity.mention_text.replace('\n', ' ')
         for entity in document.entities
     }
 
-    # Handle the line_item field to match the BigQuery ARRAY<STRUCT> schema
-    if 'line_item' in row_to_insert:
-        # Convert the single text entity into a list containing one structured item
-        row_to_insert['line_items'] = [{
-            'description': row_to_insert['line_item'], 
-            'quantity': None, 'unit_price': None, 'amount': None
-        }]
-        del row_to_insert['line_item']
-    else:
-        row_to_insert['line_items'] = []
+    print(f"RAW DATAA: {document.entities}")
 
-    # Clean and format date fields
-    for key in ['invoice_date', 'due_date']:
+
+    BQ_FLAT_COLUMNS = {
+        'supplier_name', 'supplier_address', 'supplier_email', 'supplier_phone', 
+        'supplier_website', 'supplier_tax_id', 'supplier_iban', 
+        'supplier_payment_ref', 'supplier_registration', 'receiver_name', 
+        'receiver_address', 'receiver_email', 'receiver_phone', 'receiver_website', 
+        'receiver_tax_id', 'invoice_id', 'invoice_date', 'due_date', 
+        'delivery_date', 'currency', 'currency_exchange_rate', 'net_amount', 
+        'total_tax_amount', 'freight_amount', 'amount_paid_since_last_invoice', 
+        'total_amount', 'purchase_order', 'payment_terms', 'carrier', 
+        'ship_to_name', 'ship_to_address', 'ship_from_name', 
+        'ship_from_address', 'remit_to_name', 'remit_to_address'
+    }
+
+    row_to_insert = {
+        entity.type_: entity.mention_text.replace('\n', ' ')
+        for entity in document.entities
+        if entity.type_ in BQ_FLAT_COLUMNS
+    }
+
+
+    # Validate and process nested fields according to specified format in BigQuery table.
+    for key in ['line_items', 'vat']:
+        value = row_to_insert.get(key)
+        # Check if the value is a non-empty list of objects (dictionaries).
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            pass
+        else:
+            row_to_insert[key] = []
+
+
+    # 3. Clean and format the date fields in our raw data.
+    date_keys = ['invoice_date', 'due_date', 'delivery_date']
+
+    for key in date_keys:
         if date_string := row_to_insert.get(key):
             row_to_insert[key] = robust_date_parser(date_string)
 
-    print(f"Final prepared data for BigQuery: {row_to_insert}")
-
+    
     # 4. Add the final metadata fields that don't come from the AI.
     row_to_insert.update({
         'event_id': context.event_id,
