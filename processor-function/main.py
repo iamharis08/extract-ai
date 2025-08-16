@@ -111,13 +111,38 @@ def process_invoice(event, context):
 
     # 1. First, parse ALL entities the AI gives us into a raw dictionary.
     #    This is based on your correct finding that everything is in document.entities.
-    raw_ai_data = {
-        entity.type_: entity.mention_text.replace('\n', ' ')
-        for entity in document.entities
-    }
+    raw_flat_data = {}
+    parsed_line_items = []
+    parsed_vat = []
 
-    print(f"RAW DATAA: {document.entities}")
+    # Check if the entity is a structured line_item
+    # Loop through the nested properties (quantity, description, etc.)
+    # EXAMPLE PROP
+    #{
+    # type_: "line_item/quantity",
+    # mention_text: "7"
+    # }
+    for entity in document.entities:
+        key = entity.type_
 
+        if key in ['line_item', 'vat']:
+            nested_dict = {}
+            for prop in entity.properties:
+                prop_key = prop.type_.split('/')[-1]
+                prop_value = prop.mention_text.replace('\n', ' ')
+                nested_dict[prop_key] = prop_value
+            
+            if key == 'line_item':
+                parsed_line_items.append(nested_dict)
+            elif key == 'vat':
+                parsed_vat.append(nested_dict)
+            
+        # Otherwise, it's a simple, flat entity
+        else:
+            raw_flat_data[key] = entity.mention_text.replace('\n', ' ')
+
+    row_to_insert['line_items'] = parsed_line_items
+    row_to_insert['vat'] = parsed_vat
 
     BQ_FLAT_COLUMNS = {
         'supplier_name', 'supplier_address', 'supplier_email', 'supplier_phone', 
@@ -137,16 +162,6 @@ def process_invoice(event, context):
         for entity in document.entities
         if entity.type_ in BQ_FLAT_COLUMNS
     }
-
-
-    # Validate and process nested fields according to specified format in BigQuery table.
-    for key in ['line_items', 'vat']:
-        value = row_to_insert.get(key)
-        # Check if the value is a non-empty list of objects (dictionaries).
-        if isinstance(value, list) and value and isinstance(value[0], dict):
-            pass
-        else:
-            row_to_insert[key] = []
 
 
     # 3. Clean and format the date fields in our raw data.
