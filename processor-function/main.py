@@ -67,16 +67,16 @@ def clean_numeric_fields(item_dict, keys_to_clean):
     A helper function that takes a dictionary and a set of keys,
     and safely converts the values for those keys to floats.
     """
-    # We loop through a copy of the items to safely modify the dictionary.
     for key, value in list(item_dict.items()):
-        # We only operate on the keys specified in our set.
         if key in keys_to_clean:
-            # We use the same robust try/except block as before.
             try:
-                # Remove commas from numbers like "1,187.79" before converting.
-                item_dict[key] = float(str(value).replace(',', '')) if value else None
+                # This is the most important line.
+                # It takes the value, converts it to a string just in case,
+                # REMOVES any commas, and then converts to a float.
+                clean_value_str = str(value).replace(',', '')
+                item_dict[key] = float(clean_value_str) if value else None
             except (ValueError, TypeError):
-                # If conversion fails for any reason, set the value to None.
+                # If conversion fails for any other reason, set to None.
                 item_dict[key] = None
     return item_dict
 
@@ -184,8 +184,7 @@ def process_invoice(event, context):
             elif key == 'vat':
                 parsed_vat.append(nested_dict)
             
-        else:
-            row_to_insert[key] = entity.mention_text.replace('\n', ' ')
+
 
     row_to_insert['line_items'] = parsed_line_items
     row_to_insert['vat'] = parsed_vat
@@ -201,7 +200,13 @@ def process_invoice(event, context):
 
     # ------------------------------------------------------------------
 
-    #cleaning data from list_items and vat properties for BigQuery Format
+    # Cleaning and casting top-level numeric fields
+    top_level_numeric_keys = {'net_amount', 'total_tax_amount', 'total_amount', 'freight_amount'}
+    row_to_insert = clean_numeric_fields(row_to_insert, top_level_numeric_keys)
+
+
+
+    #Cleaning data from list_items and vat properties for BigQuery Format
     line_item_numeric_keys = {'quantity', 'unit_price', 'amount'}
     vat_numeric_keys = {'tax_rate', 'tax_amount', 'amount', 'total_amount'}
 
