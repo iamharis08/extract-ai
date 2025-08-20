@@ -1,15 +1,27 @@
 import os
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from functools import lru_cache
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from google.cloud import storage
-from dotenv import load_dotenv
+from pydantic_settings import BaseSettings
 
-# Load environment variables for local development
-load_dotenv()
+# --- SETTINGS MANAGEMENT ---
+class Settings(BaseSettings):
+    """ Defines application settings, read from .env file and environment. """
+    PROJECT_ID: str
+    RAW_BUCKET: str
 
-# --- CONFIGURATION & CLIENTS ---
-PROJECT_ID = os.getenv("PROJECT_ID")
-RAW_BUCKET = os.getenv("RAW_BUCKET")
-storage_client = storage.Client(project=PROJECT_ID)
+    class Config:
+        env_file = ".env"
+
+@lru_cache()
+def get_settings():
+    """ Provides a cached instance of the settings. """
+    return Settings()
+
+# --- GOOGLE CLOUD CLIENTS (as dependencies) ---
+def get_storage_client(settings: Settings = Depends(get_settings)):
+    """ Provides a storage client, ensuring it's initialized with a project ID. """
+    return storage.Client(project=settings.PROJECT_ID)
 
 # --- FASTAPI APP ---
 app = FastAPI(title="ExtractAI Uploader API")
@@ -17,15 +29,19 @@ app = FastAPI(title="ExtractAI Uploader API")
 
 @app.get("/")
 def read_root():
-    """ A simple root endpoint to confirm the API is running. """
+    """ Health check endpoint. """
     return {"status": "ok", "service": "Uploader API"}
 
 
 @app.post("/upload/")
-async def upload_invoice(file: UploadFile = File(...)):
+async def upload_invoice(
+    file: UploadFile = File(...),
+    settings: Settings = Depends(get_settings),
+    storage_client: storage.Client = Depends(get_storage_client)
+):
     """
-    Receives an invoice file and uploads it to the raw GCS bucket.
-    The user's identity will be added later via an authentication dependency.
+    Receives an invoice file, validates it, and uploads it to the raw GCS bucket.
+    User identity will be added later via an authentication dependency.
     """
     if not file.filename or not file.content_type == "application/pdf":
         raise HTTPException(status_code=400, detail="Invalid file. Must be a PDF with a filename.")
@@ -35,10 +51,10 @@ async def upload_invoice(file: UploadFile = File(...)):
         user_id = "placeholder-user-id"
         gcs_path = f"{user_id}/{file.filename}"
         
-        bucket = storage_client.get_bucket(RAW_BUCKET)
+        bucket = storage_client.get_bucket(settings.RAW_BUCKET)
         blob = bucket.blob(gcs_path)
 
-        print(f"Uploading file to gs://{RAW_BUCKET}/{gcs_path}")
+        print(f"Uploading file to gs://{settings.RAW_BUCKET}/{gcs_path}")
         blob.upload_from_file(file.file)
 
         return {"status": "success", "filename": file.filename, "gcs_path": gcs_path}

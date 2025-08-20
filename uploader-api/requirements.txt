@@ -2,3 +2,6 @@ fastapi
 uvicorn[standard]
 google-cloud-storage
 python-dotenv
+pydantic
+pydantic-settings
+python-multipart
