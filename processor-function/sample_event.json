@@ -4,13 +4,13 @@
     "source": "//pubsub.googleapis.com/projects/extractai-468305/topics/invoice-uploads",
     "subject": "messages/1234567890",
     "id": "test-event-1",
-    "time": "2025-08-21T09:55:00.000Z",
+    "time": "2025-08-21T15:35:00.000Z",
     "datacontenttype": "application/json",
     "data": {
       "message": {
-        "data": "eyJidWNrZXQiOiAiZXh0cmFjdGFpLTQ2ODMwNS1yYXciLCAibmFtZSI6ICJwbGFjZWhvbGRlci11c2VyLWlkL3NhbXBsZS1pbnZvaWNlLnBkZiJ9",
+        "data": "eyJidWNrZXQiOiAiZXh0cmFjdGFpLTQ2ODMwNS1yYXciLCAibmFtZSI6ICJ0ZXN0LXVzZXItaWQvc2FtcGxlLWludm9pY2UucGRmIn0=",
         "messageId": "test-message-id-1",
-        "publishTime": "2025-08-21T09:55:00.000Z"
+        "publishTime": "2025-08-21T15:35:00.000Z"
       },
       "subscription": "projects/extractai-468305/subscriptions/local-test-sub"
     }

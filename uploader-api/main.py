@@ -48,7 +48,7 @@ async def upload_invoice(
 
     try:
         # TODO: Replace with real user ID from Firebase Auth dependency
-        user_id = "placeholder-user-id"
+        user_id = "test-user-id"
         gcs_path = f"{user_id}/{file.filename}"
         
         bucket = storage_client.get_bucket(settings.RAW_BUCKET)
