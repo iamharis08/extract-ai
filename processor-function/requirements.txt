@@ -9,4 +9,3 @@ functions-framework
 
 # For loading local environment variables from .env file
 python-dotenv
-Flask
