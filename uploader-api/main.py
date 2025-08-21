@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings():
     """ Provides a cached instance of the settings. """
-    return Settings()
+    return Settings(_env_file='.env', _env_file_encoding='utf-8')
 
 # --- GOOGLE CLOUD CLIENTS (as dependencies) ---
 def get_storage_client(settings: Settings = Depends(get_settings)):
