@@ -208,4 +208,5 @@ def process_invoice(cloud_event):
         
     except Exception as e:
         print(f"FATAL: Error processing invoice: {e}")
-        raise
+        return "Event ignored", 200
+        
