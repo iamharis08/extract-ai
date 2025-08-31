@@ -1,0 +1,25 @@
+apiVersion: deploy.cloud.google.com/v1
+kind: DeliveryPipeline
+metadata:
+  name: uploader-api-pipeline
+description: Main delivery pipeline for the Uploader API
+serialPipeline:
+  stages:
+  - targetId: production
+    profiles: []
+    strategy:
+      canary:
+        runtimeConfig:
+          cloudRun:
+            automaticTrafficControl: true
+        canaryDeployment:
+          percentages: [5] # Start with a 5% canary
+          verify: false # This means we will manually click "Promote" in the UI
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: production
+description: Cloud Run production service
+run:
+  location: projects/extractai-468305/locations/us-east1
