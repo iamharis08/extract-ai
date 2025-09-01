@@ -1,43 +1,25 @@
 steps:
-# Step 1: Build the container image (same as before)
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA', '.']
-  dir: 'uploader-api'
+  # 1. Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA', '.']
+    dir: 'uploader-api'
 
-# Step 2: Push the image to Artifact Registry (same as before)
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['push', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA']
+  # 2. Push the container image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA']
 
-# Step 3 (NEW): Generate the manifest for Cloud Deploy.
-# This command inspects our existing Cloud Run service and exports its configuration
-# into the 'cloudrun-service.yaml' file that our skaffold.yaml needs.
-- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-  entrypoint: gcloud
-  args:
-    - 'run'
-    - 'services'
-    - 'describe'
-    - 'uploader-api'
-    - '--region=us-east1'
-    - '--format=export'
-  # We redirect the output of the command to a file
-  - id: 'manifest'
-    script: |
-      gcloud run services describe uploader-api --region=us-east1 --format=export > cloudrun-service.yaml
+  # 3. Deploy the container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'uploader-api'
+      - '--image=us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA'
+      - '--region=us-east1'
+      - '--service-account=processor-function-sa@extractai-468305.iam.gserviceaccount.com'
+      - '--allow-unauthenticated'
 
-# Step 4 (NEW): Hand off to Cloud Deploy to start the Grand Opening.
-- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-  entrypoint: gcloud
-  args:
-    - 'deploy'
-    - 'releases'
-    - 'create'
-    - 'release-${SHORT_SHA}' # Gives the new release a unique name based on the commit
-    - '--delivery-pipeline=uploader-api-pipeline'
-    - '--region=us-east1'
-    - '--skaffold-file=skaffold.yaml'
-    - '--source=.' # Tells Cloud Deploy where to find the skaffold and manifest files
-
-# Tell Cloud Build where to find the final image
+# Tell Cloud Build which final images to store
 images:
-- 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA'
+  - 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA'
