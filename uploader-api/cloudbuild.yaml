@@ -36,3 +36,7 @@ steps:
 # Tell Cloud Build which final image artifact to store
 images:
   - 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA'
+
+# Explicitly set the logging option for the build
+options:
+  logging: CLOUD_LOGGING_ONLY
