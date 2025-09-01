@@ -1,25 +1,38 @@
 steps:
-  # 1. Build the container image
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA', '.']
-    dir: 'uploader-api'
+# Step 1: Build the container image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA', '.']
+  dir: 'uploader-api'
 
-  # 2. Push the container image to Artifact Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA']
+# Step 2: Push the image to Artifact Registry
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA']
 
-  # 3. Deploy the container image to Cloud Run
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
-    args:
-      - 'run'
-      - 'deploy'
-      - 'uploader-api'
-      - '--image=us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA'
-      - '--region=us-east1'
-      - '--service-account=processor-function-sa@extractai-468305.iam.gserviceaccount.com'
-      - '--allow-unauthenticated'
+# Step 3: Generate the Cloud Run manifest needed by Skaffold/Cloud Deploy.
+# This command takes our existing uploader-api configuration and saves it as a file.
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: 'sh'
+  args:
+  - '-c'
+  - |
+    gcloud run services describe uploader-api \
+      --region=us-east1 \
+      --format=export > cloudrun-service.yaml
 
-# Tell Cloud Build which final images to store
+# Step 4: Create a new Cloud Deploy release.
+# This is the crucial hand-off step. It tells Cloud Deploy to start our canary rollout.
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: gcloud
+  args:
+    - 'deploy'
+    - 'releases'
+    - 'create'
+    - 'release-${SHORT_SHA}' # Gives the new release a unique name
+    - '--delivery-pipeline=uploader-api-pipeline'
+    - '--region=us-east1'
+    - '--skaffold-file=skaffold.yaml'
+    - '--source=.'
+
+# Tell Cloud Build which final image artifact to store
 images:
   - 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA'
