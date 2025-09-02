@@ -1,15 +1,11 @@
 steps:
-# Step 1: Build the container image
 - name: 'gcr.io/cloud-builders/docker'
   args: ['build', '-t', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA', '.']
   dir: 'uploader-api'
 
-# Step 2: Push the image to Artifact Registry
 - name: 'gcr.io/cloud-builders/docker'
   args: ['push', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA']
-
-# Step 3: Generate the Cloud Run manifest needed by Skaffold/Cloud Deploy.
-# This command takes our existing uploader-api configuration and saves it as a file.
+  
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: 'sh'
   args:
@@ -17,26 +13,21 @@ steps:
   - |
     gcloud run services describe uploader-api \
       --region=us-east1 \
-      --format=export > cloudrun-service.yaml
+      --format=export > cloudrun-service.yaml || \
+      echo "apiVersion: serving.knative.dev/v1\nkind: Service\nmetadata:\n  name: uploader-api" > cloudrun-service.yaml
 
-# Step 4: Create a new Cloud Deploy release.
-# This is the crucial hand-off step. It tells Cloud Deploy to start our canary rollout.
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: gcloud
   args:
     - 'deploy'
     - 'releases'
     - 'create'
-    - 'release-${SHORT_SHA}' # Gives the new release a unique name
+    - 'release-${SHORT_SHA}'
     - '--delivery-pipeline=uploader-api-pipeline'
     - '--region=us-east1'
     - '--skaffold-file=skaffold.yaml'
     - '--source=.'
-
-# Tell Cloud Build which final image artifact to store
 images:
-  - 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA'
-
-# Explicitly set the logging option for the build
+- 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA'
 options:
   logging: CLOUD_LOGGING_ONLY
