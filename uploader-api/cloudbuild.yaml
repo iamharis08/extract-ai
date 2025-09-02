@@ -1,22 +1,35 @@
+# Add a substitutions block at the top to define a reusable variable for our image name
+substitutions:
+  _IMAGE_NAME: 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api'
+
 steps:
-# Step 1 & 2: Build and Push the image (these are correct)
+# 1. Build the container image
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA', '.']
+  args: ['build', '-t', '${_IMAGE_NAME}:$COMMIT_SHA', '.']
   dir: 'uploader-api'
 
+# 2. Push the image to Artifact Registry
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['push', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA']
-
-# Step 3: Generate the initial manifest for Cloud Deploy.
-# This simplified command creates a minimal service definition that Cloud Deploy can work with.
+  args: ['push', '${_IMAGE_NAME}:$COMMIT_SHA']
+  
+# 3. (THE FIX) Generate a complete and valid Cloud Run manifest from scratch.
+#    This ensures the manifest always has the required fields.
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: 'sh'
   args:
   - '-c'
   - |
-    echo "apiVersion: serving.knative.dev/v1\nkind: Service\nmetadata:\n  name: uploader-api" > cloudrun-service.yaml
-    
-# Step 4: Hand off to Cloud Deploy to start the canary release.
+    echo "apiVersion: serving.knative.dev/v1
+    kind: Service
+    metadata:
+      name: uploader-api
+    spec:
+      template:
+        spec:
+          containers:
+          - image: ${_IMAGE_NAME}:${COMMIT_SHA}" > cloudrun-service.yaml
+
+# 4. Hand off to Cloud Deploy to start the canary release.
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: gcloud
   args:
@@ -27,11 +40,11 @@ steps:
     - '--delivery-pipeline=uploader-api-pipeline'
     - '--region=us-east1'
     - '--skaffold-file=skaffold.yaml'
-    # This command uses the manifest generated in the previous step
     - '--source=.'
 
-# List the final image for traceability
+# The 'images' block is no longer strictly necessary as we define it in substitutions,
+# but it's good practice for traceability.
 images:
-- 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA'
+- '${_IMAGE_NAME}:$COMMIT_SHA'
 options:
   logging: CLOUD_LOGGING_ONLY
