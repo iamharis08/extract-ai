@@ -3,3 +3,13 @@ kind: Config
 manifests:
   rawYaml:
     - cloudrun-service.yaml
+
+# This section defines named deployment profiles.
+# Our clouddeploy.yaml file will activate one of these by name.
+profiles:
+  # This is the 'prod' profile we told Cloud Deploy to use in clouddeploy.yaml.
+  - name: prod
+    deploy:
+      # This explicitly tells Skaffold to use its built-in Cloud Run deployer
+      # when the 'prod' profile is active, overriding the Kubernetes default.
+      cloudrun: {}

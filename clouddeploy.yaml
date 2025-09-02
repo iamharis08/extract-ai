@@ -6,7 +6,7 @@ description: Main delivery pipeline for the Uploader API
 serialPipeline:
   stages:
   - targetId: production
-    profiles: []
+    profiles: [prod]
     strategy:
       canary:
         runtimeConfig:
