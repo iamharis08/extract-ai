@@ -1,11 +1,13 @@
 steps:
+# 1. Build and 2. Push the image (these steps are the same)
 - name: 'gcr.io/cloud-builders/docker'
   args: ['build', '-t', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA', '.']
   dir: 'uploader-api'
 
 - name: 'gcr.io/cloud-builders/docker'
   args: ['push', 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA']
-  
+
+# 3. Generate the Cloud Run manifest.
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: 'sh'
   args:
@@ -16,6 +18,13 @@ steps:
       --format=export > cloudrun-service.yaml || \
       echo "apiVersion: serving.knative.dev/v1\nkind: Service\nmetadata:\n  name: uploader-api" > cloudrun-service.yaml
 
+# 4. (NEW FIX) Remove the unsupported 'traffic' stanza from the manifest.
+#    'yq' is a command-line tool for YAML processing, available in Cloud Build.
+#    This command deletes the 'spec.traffic' key and its children from the file.
+- name: 'gcr.io/cloud-builders/yq'
+  args: ['del', 'cloudrun-service.yaml', 'spec.traffic']
+  
+# 5. Hand off to Cloud Deploy to start the canary release.
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: gcloud
   args:
@@ -27,6 +36,7 @@ steps:
     - '--region=us-east1'
     - '--skaffold-file=skaffold.yaml'
     - '--source=.'
+
 images:
 - 'us-east1-docker.pkg.dev/extractai-468305/extractai-images/uploader-api:$COMMIT_SHA'
 options:
