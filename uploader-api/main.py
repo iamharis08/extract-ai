@@ -31,7 +31,7 @@ app = FastAPI(title="ExtractAI Uploader API")
 @app.get("/")
 def read_root():
     """ Health check endpoint. """
-    return {"status": "TESTING CANARY", "service": "Uploader API"}
+    return {"status": "OK", "service": "Uploader API"}
 
 
 @app.post("/upload/")
